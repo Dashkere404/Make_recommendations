@@ -1,19 +1,23 @@
 import pickle
 import numpy as np
-cfg_path = "data_for_recommendations/best_knn_hybrid_config.pkl"
-with open(cfg_path, "rb") as f:
-    config = pickle.load(f)
+import streamlit as st
+@st.cache_resource
+def load_data ():
+    cfg_path = "data_for_recommendations/best_knn_hybrid_config.pkl"
+    with open(cfg_path, "rb") as f:
+        config = pickle.load(f)
 
-ae_embeddings_np = np.load('data_for_recommendations/ae_hybrid_embeddings.npy')
-siam_embeddings_np = np.load('data_for_recommendations/hybrid_embeddings.npy')
+    ae_embeddings_np = np.load('data_for_recommendations/ae_hybrid_embeddings.npy')
+    siam_embeddings_np = np.load('data_for_recommendations/hybrid_embeddings.npy')
 
-id_to_pos_path = 'data_for_recommendations/id_to_pos.pkl'
-with open(id_to_pos_path, "rb") as f:
-    id_to_pos = pickle.load(f)
+    id_to_pos_path = 'data_for_recommendations/id_to_pos.pkl'
+    with open(id_to_pos_path, "rb") as f:
+        id_to_pos = pickle.load(f)
 
-pos_to_id_path = 'data_for_recommendations/pos_to_id.pkl'
-with open(pos_to_id_path, "rb") as f:
-    pos_to_id = pickle.load(f)
+    pos_to_id_path = 'data_for_recommendations/pos_to_id.pkl'
+    with open(pos_to_id_path, "rb") as f:
+        pos_to_id = pickle.load(f)
+    return config, ae_embeddings_np, siam_embeddings_np, id_to_pos, pos_to_id
 
 
 def user_recommendation(likes):
@@ -56,3 +60,5 @@ def track_recommendation(track):
     rec_poses = idx[0]
     rec_indices = [pos_to_id[track_pos] for track_pos in rec_poses]
     return rec_indices
+
+config, ae_embeddings_np, siam_embeddings_np, id_to_pos, pos_to_id = load_data()
