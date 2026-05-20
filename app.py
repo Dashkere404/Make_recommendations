@@ -1,8 +1,18 @@
 import streamlit as st
 import pandas as pd
 
+from recommendations import (
+    config,
+    ae_embeddings_np,
+    siam_embeddings_np,
+    id_to_pos,
+    pos_to_id,
+    user_recommendation,
+    track_recommendation
+)
+
 # --------------------
-# Настройки страницы
+# PAGE CONFIG
 # --------------------
 st.set_page_config(
     page_title="Music App",
@@ -10,101 +20,61 @@ st.set_page_config(
     layout="centered"
 )
 
-st.markdown(
-    """
-    <style>
-    div.block-container {
-        padding-top: 1rem;
-        padding-bottom: 0rem;
-    }
+st.markdown("""
+<style>
+div.block-container {
+    padding-top: 1rem;
+    padding-bottom: 6rem;
+}
 
-    div[data-testid="stVerticalBlock"] {
-        gap: 0.25rem;
-    }
+div[data-testid="stVerticalBlock"] {
+    gap: 0.25rem;
+}
 
-    div[data-baseweb="input"] {
-        position: relative;
-    }
+header[data-testid="stHeader"] {
+    background: rgba(0,0,0,0);
+}
 
-    div[data-baseweb="input"]::after {
-        content: "🔍";
-        position: absolute;
-        right: 12px;
-        top: 50%;
-        transform: translateY(-50%);
-        pointer-events: none;
-    }
+footer {
+    visibility: hidden;
+}
 
-    header[data-testid="stHeader"] {
-        background: rgba(0,0,0,0);
-    }
-
-    html, body {
-        height: 100%;
-    }
-
-    div[data-testid="stAppViewContainer"] {
-        min-height: 100vh;
-        padding-bottom: 6rem;
-    }
-
-    footer {
-        visibility: hidden;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True
-)
-# --------------------
-# Фейковые треки
-# --------------------
-fake_tracks = [
-    {
-        "track_id": 1,
-        "title": "Midnight City",
-        "artist": "M83"
-    },
-    {
-        "track_id": 2,
-        "title": "Blinding Lights",
-        "artist": "The Weeknd"
-    },
-    {
-        "track_id": 3,
-        "title": "After Dark",
-        "artist": "Mr.Kitty"
-    },
-    {
-        "track_id": 4,
-        "title": "Sweater Weather",
-        "artist": "The Neighbourhood"
-    },
-    {
-        "track_id": 5,
-        "title": "505",
-        "artist": "Arctic Monkeys"
-    },
-    {
-        "track_id": 6,
-        "title": "Little Dark Age",
-        "artist": "MGMT"
-    },
-    {
-        "track_id": 7,
-        "title": "Starboy",
-        "artist": "The Weeknd"
-    },
-    {
-        "track_id": 8,
-        "title": "Borderline",
-        "artist": "Tame Impala"
-    }
-]
-
-df = pd.DataFrame(fake_tracks)
+.rec-btn button {
+    height: 120px;
+    font-size: 28px;
+    font-weight: 800;
+    border-radius: 18px;
+}
+</style>
+""", unsafe_allow_html=True)
 
 # --------------------
-# Session State
+# LOAD DATA
+# --------------------
+df = pd.read_csv("data_for_recommendations/tracks.csv")
+
+# --------------------
+# CLEAN DATA (ВАЖНО)
+# --------------------
+def is_bad_track(row):
+    title = str(row["track_title"]).lower()
+    artist = str(row["artist_name"]).lower()
+
+    if "track" in title and "area" in artist:
+        return True
+    if "area c" in title:
+        return True
+    if title.startswith("track ") and title.split(" ")[1].isdigit():
+        return True
+    if len(title) < 2 or len(artist) < 2:
+        return True
+
+    return False
+
+df = df[~df.apply(is_bad_track, axis=1)].reset_index(drop=True)
+
+# --------------------
+# SESSION STATE
 # --------------------
 if "favorites" not in st.session_state:
     st.session_state.favorites = []
@@ -115,277 +85,183 @@ if "page" not in st.session_state:
 if "selected_track" not in st.session_state:
     st.session_state.selected_track = None
 
-if "previous_page" not in st.session_state:
-    st.session_state.previous_page = "home"
+if "visible_count" not in st.session_state:
+    st.session_state.visible_count = 50
 
 # --------------------
-# Поиск
+# SEARCH (по всей базе)
 # --------------------
-def search_tracks(query, data):
-
+def search_tracks(query):
     if not query:
-        return data
+        return df
 
-    query = query.lower()
-
-    return data[
-        data["title"].str.lower().str.contains(query) |
-        data["artist"].str.lower().str.contains(query)
+    q = query.lower()
+    return df[
+        df["track_title"].str.lower().str.contains(q) |
+        df["artist_name"].str.lower().str.contains(q)
     ]
 
 # --------------------
-# Карточка трека
+# TRACK CARD
 # --------------------
 def track_card(track):
 
-    st.markdown(
-        """
-        <style>
-        /* убираем лишние отступы сверху/снизу страницы */
-        div.block-container {
-            padding-top: 1rem;
-            padding-bottom: 0rem;
-        }
+    col1, col2 = st.columns([10, 1])
 
-        /* уменьшаем расстояние между карточками */
-        div[data-testid="stVerticalBlock"] {
-            gap: 0.25rem;
-        }
+    with col1:
+        if st.button(
+            f"🎵 {track['track_title']} — {track['artist_name']}",
+            key=f"t_{track['track_id']}",
+            use_container_width=True
+        ):
+            st.session_state.selected_track = track["track_id"]
+            st.session_state.page = "similar"
+            st.rerun()
 
-        /* 🔍 иконка справа в поиске */
-        div[data-baseweb="input"] {
-            position: relative;
-        }
+    with col2:
+        is_fav = track["track_id"] in st.session_state.favorites
+        heart = "❤️" if is_fav else "🤍"
 
-        div[data-baseweb="input"]::after {
-            content: "🔍";
-            position: absolute;
-            right: 12px;
-            top: 50%;
-            transform: translateY(-50%);
-            pointer-events: none;
-        }
-        
-        header[data-testid="stHeader"] {
-            background: rgba(0,0,0,0);
-        }
-
-        </style>
-        """,
-        unsafe_allow_html=True
-    )
-
-    with st.container():
-
-        col1, col2 = st.columns([10, 1])
-
-        with col1:
-            st.markdown('<div class="track-btn">', unsafe_allow_html=True)
-
-            if st.button(
-                f"🎵 {track['title']}  —  {track['artist']}",
-                key=f"track_{track['track_id']}",
-                use_container_width=True
-            ):
-                st.session_state.previous_page = st.session_state.page
-                st.session_state.selected_track = track
-                st.session_state.page = "similar"
-                st.rerun()
-
-            st.markdown('</div>', unsafe_allow_html=True)
-
-        with col2:
-            st.markdown('<div class="fav-btn">', unsafe_allow_html=True)
-
-            is_favorite = track["track_id"] in st.session_state.favorites
-            heart = "❤️" if is_favorite else "🤍"
-
-            if st.button(
-                heart,
-                key=f"fav_{track['track_id']}",
-                use_container_width=True
-            ):
-                if is_favorite:
-                    st.session_state.favorites.remove(track["track_id"])
-                else:
-                    st.session_state.favorites.append(track["track_id"])
-
-                st.rerun()
-
-            st.markdown('</div>', unsafe_allow_html=True)
+        if st.button(heart, key=f"f_{track['track_id']}"):
+            if is_fav:
+                st.session_state.favorites.remove(track["track_id"])
+            else:
+                st.session_state.favorites.append(track["track_id"])
+            st.rerun()
 
 # --------------------
-# Главная
+# HOME
 # --------------------
 def home_page():
 
     st.title("🎵 Музыка")
 
-    query = st.text_input(
-        "",
-        placeholder="Поиск треков"
-    )
+    query = st.text_input("", placeholder="Поиск треков")
 
-    filtered = search_tracks(query, df)
+    filtered = search_tracks(query)
 
-    # Рекомендации
+    visible = st.session_state.visible_count
+    display_df = filtered.head(visible)
+
+    # кнопка рекомендаций
     if len(st.session_state.favorites) > 0:
 
         st.markdown("###")
 
-        st.markdown(
-            """
-            <style>
-            .rec-btn button {
-                height: 120px;          /* 👈 делаем выше */
-                font-size: 28px;        /* 👈 крупный текст */
-                font-weight: 700;       /* жирный */
-                border-radius: 18px;    /* более "карточный" вид */
-            }
-            </style>
-            """,
-            unsafe_allow_html=True
-        )
-
-        with st.container():
-            st.markdown('<div class="rec-btn">', unsafe_allow_html=True)
-
-            if st.button(
-                "🎧 Музыка для вас",
-                use_container_width=True,
-                key="recommend_btn"
-            ):
-                st.session_state.page = "recommendations"
-                st.rerun()
-
-            st.markdown('</div>', unsafe_allow_html=True)
+        if st.button("🎧 Музыка для вас", use_container_width=True):
+            st.session_state.page = "recommendations"
+            st.rerun()
 
     st.markdown("## Треки")
 
-    for _, track in filtered.iterrows():
+    for _, track in display_df.iterrows():
         track_card(track)
+
+    # LOAD MORE
+    if visible < len(filtered):
+        if st.button("⬇ Загрузить ещё 25", use_container_width=True):
+            st.session_state.visible_count += 25
+            st.rerun()
+
 # --------------------
-# Избранное
+# FAVORITES
 # --------------------
 def favorites_page():
 
     st.title("❤️ Избранное")
 
-    query = st.text_input(
-        "",
-        placeholder="🔍 Поиск"
-    )
+    fav_df = df[df["track_id"].isin(st.session_state.favorites)]
 
-    fav_df = df[
-        df["track_id"].isin(
-            st.session_state.favorites
-        )
-    ]
-
-    filtered = search_tracks(query, fav_df)
-
-    if len(filtered) == 0:
+    if len(fav_df) == 0:
         st.info("Нет сохранённых треков")
 
-    for _, track in filtered.iterrows():
+    for _, track in fav_df.iterrows():
         track_card(track)
 
 # --------------------
-# Рекомендации
+# RECOMMENDATIONS
 # --------------------
 def recommendations_page():
 
     st.title("🎧 Рекомендации")
 
     if st.button("⬅ Назад"):
-
         st.session_state.page = "home"
         st.rerun()
 
-    st.write("На основе ваших предпочтений")
-
-    # Временно случайные треки
-    recs = df.sample(
-        min(5, len(df))
+    rec_ids = user_recommendation(
+        st.session_state.favorites,
+        config,
+        ae_embeddings_np,
+        id_to_pos,
+        pos_to_id
     )
 
-    for _, track in recs.iterrows():
+    rec_df = df[df["track_id"].isin(rec_ids)]
+
+    if len(rec_df) == 0:
+        st.info("Добавь лайки ❤️ для рекомендаций")
+
+    for _, track in rec_df.iterrows():
         track_card(track)
 
 # --------------------
-# Похожие треки
+# SIMILAR TRACKS
 # --------------------
 def similar_page():
 
-    track = st.session_state.selected_track
+    track_id = st.session_state.selected_track
 
     st.title("🎵 Похожие треки")
 
-    col1, col2 = st.columns([5,1])
+    if st.button("⬅ Назад"):
+        st.session_state.page = "home"
+        st.rerun()
 
-    with col1:
-
-        if st.button("⬅ Назад"):
-
-            st.session_state.page = (
-                st.session_state.previous_page
-            )
-
-            st.rerun()
-
-    st.markdown("###")
-
-    st.info(
-        f"Похожие на:\n\n"
-        f"{track['title']} — {track['artist']}"
+    rec_ids = track_recommendation(
+        track_id,
+        config,
+        siam_embeddings_np,
+        id_to_pos,
+        pos_to_id
     )
 
-    # Временно случайные треки
-    similar_tracks = df.sample(
-        min(5, len(df))
-    )
+    rec_df = df[df["track_id"].isin(rec_ids)]
 
-    for _, t in similar_tracks.iterrows():
-        track_card(t)
+    selected = df[df["track_id"] == track_id]
+    if not selected.empty:
+        st.info(
+            f"Выбран трек: {selected.iloc[0]['track_title']} — {selected.iloc[0]['artist_name']}"
+        )
+
+    for _, track in rec_df.iterrows():
+        track_card(track)
 
 # --------------------
-# Роутинг
+# ROUTER
 # --------------------
 if st.session_state.page == "home":
     home_page()
-
 elif st.session_state.page == "favorites":
     favorites_page()
-
 elif st.session_state.page == "recommendations":
     recommendations_page()
-
 elif st.session_state.page == "similar":
     similar_page()
 
 # --------------------
-# Нижняя навигация
+# BOTTOM NAV
 # --------------------
 st.markdown("---")
 
-nav1, nav2 = st.columns(2)
+c1, c2 = st.columns(2)
 
-with nav1:
-
-    if st.button(
-        "🏠",
-        use_container_width=True
-    ):
-
+with c1:
+    if st.button("🏠", use_container_width=True):
         st.session_state.page = "home"
         st.rerun()
 
-with nav2:
-
-    if st.button(
-        "❤️",
-        use_container_width=True
-    ):
-
+with c2:
+    if st.button("❤️", use_container_width=True):
         st.session_state.page = "favorites"
         st.rerun()
