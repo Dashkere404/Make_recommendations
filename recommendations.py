@@ -1,4 +1,6 @@
 import pickle
+from typing import final
+
 import numpy as np
 import streamlit as st
 
@@ -25,7 +27,7 @@ def user_recommendation(likes, config, ae_embeddings_np, id_to_pos, pos_to_id):
     from sklearn.neighbors import NearestNeighbors
 
     knn = NearestNeighbors(
-        n_neighbors=50,
+        n_neighbors=50 + len(likes),
         metric=config.get("metric", "cosine"),
         algorithm=config.get("algorithm", "auto")
     )
@@ -44,9 +46,17 @@ def user_recommendation(likes, config, ae_embeddings_np, id_to_pos, pos_to_id):
     favorite_vectors = ae_embeddings_np[favorite_poses]
     user_emb = favorite_vectors.mean(axis=0).reshape(1, -1)
 
-    _, idx = knn.kneighbors(user_emb, n_neighbors=50)
+    _, idx = knn.kneighbors(user_emb, n_neighbors=50+len(likes))
+    rec_indices = [pos_to_id[i] for i in idx[0]]
 
-    return [pos_to_id[i] for i in idx[0]]
+    final_recommendations = []
+    for rec_track in rec_indices:
+        if rec_track not in likes:
+            final_recommendations.append(rec_track)
+        if len(final_recommendations) >= 50:
+            break
+
+    return final_recommendations
 
 
 def track_recommendation(track_id, config, siam_embeddings_np, id_to_pos, pos_to_id):
@@ -56,7 +66,7 @@ def track_recommendation(track_id, config, siam_embeddings_np, id_to_pos, pos_to
         return []
 
     knn = NearestNeighbors(
-        n_neighbors=50,
+        n_neighbors=51,
         metric=config.get("metric", "cosine"),
         algorithm=config.get("algorithm", "auto")
     )
@@ -66,9 +76,17 @@ def track_recommendation(track_id, config, siam_embeddings_np, id_to_pos, pos_to
     track_pos = id_to_pos[track_id]
     track_emb = siam_embeddings_np[track_pos].reshape(1, -1)
 
-    _, idx = knn.kneighbors(track_emb, n_neighbors=50)
+    _, idx = knn.kneighbors(track_emb, n_neighbors=51)
+    rec_indices = [pos_to_id[i] for i in idx[0]]
 
-    return [pos_to_id[i] for i in idx[0]]
+    final_recommendations = []
+    for rec_track in rec_indices:
+        if rec_track != track_id:
+            final_recommendations.append(rec_track)
+        if len(final_recommendations) >= 50:
+            break
+
+    return final_recommendations
 
 
 # загружаем один раз
