@@ -11,15 +11,14 @@ from recommendations import (
     track_recommendation
 )
 
-# --------------------
-# PAGE CONFIG
-# --------------------
+# настройки страницы
 st.set_page_config(
     page_title="Music App",
     page_icon="🎵",
     layout="centered"
 )
 
+# css стили
 st.markdown("""
 <style>
 div.block-container {
@@ -48,14 +47,10 @@ footer {
 </style>
 """, unsafe_allow_html=True)
 
-# --------------------
-# LOAD DATA
-# --------------------
+# загрузка данных
 df = pd.read_csv("data_for_recommendations/tracks.csv")
 
-# --------------------
-# CLEAN DATA (ВАЖНО)
-# --------------------
+# очистка данных
 def is_bad_track(row):
     title = str(row["track_title"]).lower()
     artist = str(row["artist_name"]).lower()
@@ -73,9 +68,7 @@ def is_bad_track(row):
 
 df = df[~df.apply(is_bad_track, axis=1)].reset_index(drop=True)
 
-# --------------------
-# SESSION STATE
-# --------------------
+# session state
 if "favorites" not in st.session_state:
     st.session_state.favorites = []
 
@@ -85,12 +78,11 @@ if "page" not in st.session_state:
 if "selected_track" not in st.session_state:
     st.session_state.selected_track = None
 
+# число отображаемых треков
 if "visible_count" not in st.session_state:
     st.session_state.visible_count = 50
 
-# --------------------
-# SEARCH (по всей базе)
-# --------------------
+# поиск по базе
 def search_tracks(query):
     if not query:
         return df
@@ -101,14 +93,13 @@ def search_tracks(query):
         df["artist_name"].str.lower().str.contains(q)
     ]
 
-# --------------------
-# TRACK CARD
-# --------------------
+# карточка трека
 def track_card(track):
 
     col1, col2 = st.columns([10, 1])
 
     with col1:
+        # переход к похожим трекам
         if st.button(
             f"🎵 {track['track_title']} — {track['artist_name']}",
             key=f"t_{track['track_id']}",
@@ -122,6 +113,7 @@ def track_card(track):
         is_fav = track["track_id"] in st.session_state.favorites
         heart = "❤️" if is_fav else "🤍"
 
+        # добавление в избранное
         if st.button(heart, key=f"f_{track['track_id']}"):
             if is_fav:
                 st.session_state.favorites.remove(track["track_id"])
@@ -129,9 +121,7 @@ def track_card(track):
                 st.session_state.favorites.append(track["track_id"])
             st.rerun()
 
-# --------------------
-# HOME
-# --------------------
+# главная страница
 def home_page():
 
     st.title("🎵 Музыка")
@@ -157,15 +147,13 @@ def home_page():
     for _, track in display_df.iterrows():
         track_card(track)
 
-    # LOAD MORE
+    # загрузка ещё треков
     if visible < len(filtered):
         if st.button("⬇ Загрузить ещё 25", use_container_width=True):
             st.session_state.visible_count += 25
             st.rerun()
 
-# --------------------
-# FAVORITES
-# --------------------
+# избранное
 def favorites_page():
 
     st.title("❤️ Избранное")
@@ -178,9 +166,7 @@ def favorites_page():
     for _, track in fav_df.iterrows():
         track_card(track)
 
-# --------------------
-# RECOMMENDATIONS
-# --------------------
+# рекомендации для пользователя
 def recommendations_page():
 
     st.title("🎧 Рекомендации")
@@ -205,9 +191,7 @@ def recommendations_page():
     for _, track in rec_df.iterrows():
         track_card(track)
 
-# --------------------
-# SIMILAR TRACKS
-# --------------------
+# похожие треки
 def similar_page():
 
     track_id = st.session_state.selected_track
@@ -228,7 +212,9 @@ def similar_page():
 
     rec_df = df[df["track_id"].isin(rec_ids)]
 
+    # информация о выбранном треке
     selected = df[df["track_id"] == track_id]
+
     if not selected.empty:
         st.info(
             f"Выбран трек: {selected.iloc[0]['track_title']} — {selected.iloc[0]['artist_name']}"
@@ -237,9 +223,7 @@ def similar_page():
     for _, track in rec_df.iterrows():
         track_card(track)
 
-# --------------------
-# ROUTER
-# --------------------
+# роутинг страниц
 if st.session_state.page == "home":
     home_page()
 elif st.session_state.page == "favorites":
@@ -249,9 +233,7 @@ elif st.session_state.page == "recommendations":
 elif st.session_state.page == "similar":
     similar_page()
 
-# --------------------
-# BOTTOM NAV
-# --------------------
+# нижняя навигация
 st.markdown("---")
 
 c1, c2 = st.columns(2)
