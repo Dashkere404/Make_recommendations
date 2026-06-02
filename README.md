@@ -20,7 +20,7 @@
 ### 1. Клонировать репозиторий
 
 ```bash
-git clone <repository_url>
+git clone https://github.com/Dashkere404/Make_recommendations.git
 cd make_recommendations
 ```
 
