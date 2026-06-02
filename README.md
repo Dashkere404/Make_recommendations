@@ -24,12 +24,7 @@ git clone https://github.com/Dashkere404/Make_recommendations.git
 cd make_recommendations
 ```
 
-### 2. Установить зависимости
-```
-pip install -r requirements.txt
-```
-
-### 3. Запустить приложение
+### 2. Запустить приложение
 ```
 streamlit run app.py
 ```
